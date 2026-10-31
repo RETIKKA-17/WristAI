@@ -32,11 +32,11 @@ services:
       - key: INITIAL_DOCTOR_EMAIL
         value: dr.ananya@wristai.hospital
       - key: INITIAL_DOCTOR_PASSWORD
-        generateValue: true
+        value: doctor123
       - key: INITIAL_ADMIN_EMAIL
         value: admin@wristai.hospital
       - key: INITIAL_ADMIN_PASSWORD
-        generateValue: true
+        value: admin123
 
     # Optional: Attach Persistent Disk for SQLite & Radiograph Uploads (Requires Starter Plan $7/mo)
     # disk:

@@ -300,14 +300,56 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
               </button>
             </form>
 
-            {/* Quick Demo Credentials helper */}
-            <div className="p-3 bg-blue-50/60 border border-blue-100 rounded-xl text-[11px] text-slate-600">
-              <div className="font-bold text-blue-900 mb-0.5">Quick Demo Access:</div>
-              {role === 'doctor' ? (
-                <div>Doctor: <code className="text-blue-700 font-mono">dr.ananya@wristai.hospital</code> / <code className="text-blue-700 font-mono">doctor123</code></div>
-              ) : (
-                <div>Admin: <code className="text-blue-700 font-mono">admin@wristai.hospital</code> / <code className="text-blue-700 font-mono">admin123</code></div>
-              )}
+            {/* Quick Demo Access Card displaying BOTH Doctor and Admin credentials clearly */}
+            <div className="p-3.5 bg-blue-50/70 border border-blue-200/80 rounded-2xl text-xs space-y-2">
+              <div className="flex items-center justify-between text-blue-950 font-bold text-[11px] uppercase tracking-wider">
+                <span>Demo Login Credentials</span>
+                <span className="text-[10px] lowercase text-blue-600 font-normal">Click card to switch & auto-fill</span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                {/* Doctor Access */}
+                <button
+                  type="button"
+                  onClick={() => handleRoleSwitch('doctor')}
+                  className={`text-left p-2.5 rounded-xl border transition cursor-pointer ${
+                    role === 'doctor'
+                      ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                      : 'bg-white text-slate-700 border-blue-100 hover:border-blue-300'
+                  }`}
+                >
+                  <div className="font-bold flex items-center gap-1.5 text-xs">
+                    <Stethoscope className="w-3.5 h-3.5" /> Doctor Portal
+                  </div>
+                  <div className="mt-1 text-[10px] font-mono truncate">
+                    Email: <span className="underline">dr.ananya@wristai.hospital</span>
+                  </div>
+                  <div className="text-[10px] font-mono opacity-90">
+                    Password: <span className="font-bold">doctor123</span>
+                  </div>
+                </button>
+
+                {/* Admin Access */}
+                <button
+                  type="button"
+                  onClick={() => handleRoleSwitch('admin')}
+                  className={`text-left p-2.5 rounded-xl border transition cursor-pointer ${
+                    role === 'admin'
+                      ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                      : 'bg-white text-slate-700 border-blue-100 hover:border-blue-300'
+                  }`}
+                >
+                  <div className="font-bold flex items-center gap-1.5 text-xs">
+                    <Building2 className="w-3.5 h-3.5" /> Hospital Admin
+                  </div>
+                  <div className="mt-1 text-[10px] font-mono truncate">
+                    Email: <span className="underline">admin@wristai.hospital</span>
+                  </div>
+                  <div className="text-[10px] font-mono opacity-90">
+                    Password: <span className="font-bold">admin123</span>
+                  </div>
+                </button>
+              </div>
             </div>
 
             <div className="text-center text-xs text-slate-500">
