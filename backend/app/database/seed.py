@@ -1,30 +1,86 @@
 import os
 import shutil
 from PIL import Image
+from sqlalchemy import func
+from sqlalchemy.orm import Session
 from backend.app.database.session import engine, SessionLocal, Base
 from backend.app.models.entities import User, Doctor, Patient, Case, ActivityLog
 from backend.app.auth.security import hash_password
+
+def sync_initial_credentials(db: Session) -> bool:
+    """
+    Explicit, controlled production credential synchronization procedure.
+    Updates ONLY the password_hash and is_active status for the exact configured
+    doctor and admin email addresses.
+    Does NOT touch, modify, or reset any patient records, cases, uploads, or audit logs.
+    """
+    env = os.getenv("ENVIRONMENT", "development").lower()
+    is_prod = env == "production" or bool(os.getenv("RENDER")) or bool(os.getenv("RAILWAY_ENVIRONMENT"))
+
+    raw_doc_email = os.getenv("INITIAL_DOCTOR_EMAIL", "dr.ananya@wristai.hospital")
+    raw_adm_email = os.getenv("INITIAL_ADMIN_EMAIL", "admin@wristai.hospital")
+    doctor_email = raw_doc_email.strip().lower()
+    admin_email = raw_adm_email.strip().lower()
+
+    raw_doc_pwd = os.getenv("INITIAL_DOCTOR_PASSWORD", "").strip()
+    raw_adm_pwd = os.getenv("INITIAL_ADMIN_PASSWORD", "").strip()
+
+    if is_prod:
+        # Never allow demo fallback passwords in production
+        if not raw_doc_pwd or raw_doc_pwd in ("doctor123", "password", "123456", "admin"):
+            raise ValueError(
+                "Production credential sync failed: INITIAL_DOCTOR_PASSWORD must be configured with a valid, secure password (demo defaults are prohibited in production)."
+            )
+        if not raw_adm_pwd or raw_adm_pwd in ("admin123", "password", "123456", "admin"):
+            raise ValueError(
+                "Production credential sync failed: INITIAL_ADMIN_PASSWORD must be configured with a valid, secure password (demo defaults are prohibited in production)."
+            )
+        doctor_password = raw_doc_pwd
+        admin_password = raw_adm_pwd
+    else:
+        doctor_password = raw_doc_pwd or "doctor123"
+        admin_password = raw_adm_pwd or "admin123"
+
+    updated = False
+
+    # Match ONLY by exact configured email address (no role-only fallback)
+    doc_user = db.query(User).filter(func.lower(User.email) == doctor_email).first()
+    if doc_user:
+        doc_user.password_hash = hash_password(doctor_password)
+        doc_user.is_active = True
+        updated = True
+        print(f"[Credential Recovery] Successfully synchronized credentials for configured doctor account: {doctor_email}")
+    else:
+        print(f"[Credential Recovery] Notice: Account with email '{doctor_email}' not found in database.")
+
+    adm_user = db.query(User).filter(func.lower(User.email) == admin_email).first()
+    if adm_user:
+        adm_user.password_hash = hash_password(admin_password)
+        adm_user.is_active = True
+        updated = True
+        print(f"[Credential Recovery] Successfully synchronized credentials for configured admin account: {admin_email}")
+    else:
+        print(f"[Credential Recovery] Notice: Account with email '{admin_email}' not found in database.")
+
+    if updated:
+        db.commit()
+
+    return updated
 
 def seed_database():
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
 
-    # Check if already seeded - ensure demo passwords match configured environment
+    # Check if database is already populated
     if db.query(User).first() is not None:
-        doctor_email = os.getenv("INITIAL_DOCTOR_EMAIL", "dr.ananya@wristai.hospital").strip()
-        doctor_password = os.getenv("INITIAL_DOCTOR_PASSWORD", "doctor123").strip() or "doctor123"
-        admin_email = os.getenv("INITIAL_ADMIN_EMAIL", "admin@wristai.hospital").strip()
-        admin_password = os.getenv("INITIAL_ADMIN_PASSWORD", "admin123").strip() or "admin123"
-
-        doc_user = db.query(User).filter(User.email == doctor_email).first()
-        if doc_user:
-            doc_user.password_hash = hash_password(doctor_password)
-        adm_user = db.query(User).filter(User.email == admin_email).first()
-        if adm_user:
-            adm_user.password_hash = hash_password(admin_password)
-        db.commit()
+        # Controlled recovery guard: do not silently overwrite passwords on every application restart
+        sync_requested = os.getenv("SYNC_CREDENTIALS_ON_STARTUP", "").strip().lower() in ("true", "1", "yes")
+        if sync_requested:
+            print("[Database Seed] Controlled credential synchronization requested (SYNC_CREDENTIALS_ON_STARTUP=true)...")
+            sync_initial_credentials(db)
+        else:
+            print("[Database Seed] Database already populated. Startup credential sync skipped.")
         db.close()
-        print("[Database Seed] Already populated. Verified credentials synchronized.")
         return
 
     print("[Database Seed] Populating initial hospital records...")
@@ -63,11 +119,29 @@ def seed_database():
             uploaded_files[key] = (dest_name, thumb_name)
 
     # 1. Users - Credential Handling
-    doctor_email = os.getenv("INITIAL_DOCTOR_EMAIL", "dr.ananya@wristai.hospital").strip()
-    doctor_password = os.getenv("INITIAL_DOCTOR_PASSWORD", "doctor123").strip() or "doctor123"
+    env = os.getenv("ENVIRONMENT", "development").lower()
+    is_prod = env == "production" or bool(os.getenv("RENDER")) or bool(os.getenv("RAILWAY_ENVIRONMENT"))
 
-    admin_email = os.getenv("INITIAL_ADMIN_EMAIL", "admin@wristai.hospital").strip()
-    admin_password = os.getenv("INITIAL_ADMIN_PASSWORD", "admin123").strip() or "admin123"
+    doctor_email = os.getenv("INITIAL_DOCTOR_EMAIL", "dr.ananya@wristai.hospital").strip().lower()
+    admin_email = os.getenv("INITIAL_ADMIN_EMAIL", "admin@wristai.hospital").strip().lower()
+
+    raw_doc_pwd = os.getenv("INITIAL_DOCTOR_PASSWORD", "").strip()
+    raw_adm_pwd = os.getenv("INITIAL_ADMIN_PASSWORD", "").strip()
+
+    if is_prod:
+        if not raw_doc_pwd or raw_doc_pwd in ("doctor123", "password", "123456", "admin"):
+            raise ValueError(
+                "Initial seeding failed: INITIAL_DOCTOR_PASSWORD must be configured with a valid, secure password in production."
+            )
+        if not raw_adm_pwd or raw_adm_pwd in ("admin123", "password", "123456", "admin"):
+            raise ValueError(
+                "Initial seeding failed: INITIAL_ADMIN_PASSWORD must be configured with a valid, secure password in production."
+            )
+        doctor_password = raw_doc_pwd
+        admin_password = raw_adm_pwd
+    else:
+        doctor_password = raw_doc_pwd or "doctor123"
+        admin_password = raw_adm_pwd or "admin123"
 
     doctor_user = User(
         email=doctor_email,

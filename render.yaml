@@ -35,6 +35,8 @@ services:
         value: doctor123
       - key: INITIAL_ADMIN_EMAIL
         value: admin@wristai.hospital
+      - key: SYNC_CREDENTIALS_ON_STARTUP
+        value: "true"
       - key: INITIAL_ADMIN_PASSWORD
         value: admin123
 
