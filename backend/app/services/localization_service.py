@@ -16,7 +16,7 @@ class LocalizationService:
         self.base_dir = base_dir
         self.annotations_path = annotations_path or os.path.join(base_dir, "data", "localization_annotations.json")
         self.raw_dir = os.path.join(base_dir, "data", "raw")
-        self.uploads_dir = os.path.join(base_dir, "backend", "uploads")
+        self.uploads_dir = os.getenv("UPLOADS_DIR", os.path.join(base_dir, "backend", "uploads"))
         os.makedirs(self.uploads_dir, exist_ok=True)
         
         self.annotations: List[Dict[str, Any]] = []

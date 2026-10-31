@@ -2,10 +2,10 @@ import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
-DB_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "data_store"))
+DB_DIR = os.getenv("DB_DIR", os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "data_store")))
 os.makedirs(DB_DIR, exist_ok=True)
 
-# Support Railway DATABASE_URL (SQLite by default, or PostgreSQL if configured)
+# Support Railway & Render DATABASE_URL (SQLite by default, or PostgreSQL if configured)
 raw_db_url = os.getenv("DATABASE_URL")
 if not raw_db_url:
     DATABASE_URL = f"sqlite:///{os.path.join(DB_DIR, 'wristai_hospital.db')}"

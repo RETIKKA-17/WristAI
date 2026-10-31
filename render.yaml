@@ -1,0 +1,67 @@
+# =====================================================================
+# WristAI - Production Render Blueprint Deployment Specification
+# =====================================================================
+# Architecture:
+# 1. wristai-backend: FastAPI + PyTorch ResNet-18 (Docker Web Service)
+# 2. wristai-frontend: React 19 + Vite (Global CDN Static Site with SPA Rewrites)
+# =====================================================================
+
+services:
+  # -------------------------------------------------------------------
+  # BACKEND SERVICE (FastAPI + PyTorch CPU + ResNet-18 Inference)
+  # -------------------------------------------------------------------
+  - type: web
+    name: wristai-backend
+    env: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: PORT
+        value: 10000
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CORS_ORIGINS
+        value: https://wristai-frontend.onrender.com
+      - key: DATABASE_URL
+        value: sqlite:///backend/data_store/wristai_hospital.db
+      - key: INITIAL_DOCTOR_EMAIL
+        value: dr.ananya@wristai.hospital
+      - key: INITIAL_DOCTOR_PASSWORD
+        generateValue: true
+      - key: INITIAL_ADMIN_EMAIL
+        value: admin@wristai.hospital
+      - key: INITIAL_ADMIN_PASSWORD
+        generateValue: true
+
+    # Optional: Attach Persistent Disk for SQLite & Radiograph Uploads (Requires Starter Plan $7/mo)
+    # disk:
+    #   name: wristai-disk
+    #   mountPath: /var/data
+    #   sizeGB: 1
+
+  # -------------------------------------------------------------------
+  # FRONTEND STATIC SITE (React.js Single Page Application via Render CDN)
+  # -------------------------------------------------------------------
+  - type: web
+    name: wristai-frontend
+    env: static
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    autoDeploy: true
+    routes:
+      # SPA Client-Side Routing: redirect all path requests to index.html
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_BASE_URL
+        fromService:
+          type: web
+          name: wristai-backend
+          property: host

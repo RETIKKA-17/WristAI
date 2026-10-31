@@ -20,7 +20,7 @@ from backend.app.services.localization_service import get_localization_service
 
 router = APIRouter(prefix="/api/doctor", tags=["Doctor Portal"])
 
-UPLOADS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "uploads"))
+UPLOADS_DIR = os.getenv("UPLOADS_DIR", os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "uploads")))
 os.makedirs(UPLOADS_DIR, exist_ok=True)
 
 DISCLAIMER_TEXT = (

@@ -3,11 +3,17 @@ import {
   DoctorDashboardStats, AdminDashboardStats, AnalysisResultPayload 
 } from '../types';
 
-export const API_BASE_URL = (
+const rawApiUrl = (
   import.meta.env.VITE_API_URL || 
   import.meta.env.VITE_API_BASE_URL || 
   ''
-).replace(/\/$/, '');
+).trim().replace(/\/$/, '');
+
+export const API_BASE_URL = (
+  rawApiUrl && !rawApiUrl.startsWith('http://') && !rawApiUrl.startsWith('https://')
+    ? `https://${rawApiUrl}`
+    : rawApiUrl
+);
 
 const BASE_URL = API_BASE_URL ? `${API_BASE_URL}/api` : '/api';
 

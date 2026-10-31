@@ -20,6 +20,17 @@ class WristFractureInferenceService:
 
         if not os.path.exists(self.checkpoint_path):
             raise FileNotFoundError(f"Model checkpoint not found: {self.checkpoint_path}")
+        
+        # Verify checkpoint is actual binary weights and not an unpulled Git LFS pointer (<10KB)
+        if os.path.getsize(self.checkpoint_path) < 10000:
+            print(f"[InferenceService] WARNING: Checkpoint at {self.checkpoint_path} is a Git LFS pointer. Downloading full weights...")
+            try:
+                import urllib.request
+                lfs_url = "https://media.githubusercontent.com/media/RETIKKA-17/WristAI/main/models/wrist_fracture_model.pth"
+                urllib.request.urlretrieve(lfs_url, self.checkpoint_path)
+                print(f"[InferenceService] Successfully fetched model checkpoint ({os.path.getsize(self.checkpoint_path)} bytes).")
+            except Exception as e:
+                raise RuntimeError(f"Model checkpoint is a Git LFS pointer and automatic download failed: {e}")
         if not os.path.exists(self.class_names_path):
             raise FileNotFoundError(f"Class names config not found: {self.class_names_path}")
         if not os.path.exists(self.preprocessing_path):

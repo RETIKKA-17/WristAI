@@ -50,11 +50,35 @@ def seed_database():
                 
             uploaded_files[key] = (dest_name, thumb_name)
 
-    # 1. Users
+    # 1. Users - Secure Credential Handling
+    env = os.getenv("ENVIRONMENT", "development").lower()
+    is_prod = env == "production" or bool(os.getenv("RENDER")) or bool(os.getenv("RAILWAY_ENVIRONMENT"))
+
+    doctor_email = os.getenv("INITIAL_DOCTOR_EMAIL", "dr.ananya@wristai.hospital").strip()
+    doctor_password = os.getenv("INITIAL_DOCTOR_PASSWORD", "").strip()
+
+    admin_email = os.getenv("INITIAL_ADMIN_EMAIL", "admin@wristai.hospital").strip()
+    admin_password = os.getenv("INITIAL_ADMIN_PASSWORD", "").strip()
+
+    if is_prod:
+        if not doctor_password or doctor_password in ("doctor123", "password", "123456", "admin"):
+            raise RuntimeError(
+                "FATAL SECURITY ERROR: INITIAL_DOCTOR_PASSWORD must be set to a secure custom password in production! "
+                "Insecure default credentials like 'doctor123' are strictly forbidden in production."
+            )
+        if not admin_password or admin_password in ("admin123", "password", "123456", "admin"):
+            raise RuntimeError(
+                "FATAL SECURITY ERROR: INITIAL_ADMIN_PASSWORD must be set to a secure custom password in production! "
+                "Insecure default credentials like 'admin123' are strictly forbidden in production."
+            )
+    else:
+        doctor_password = doctor_password or "doctor123"
+        admin_password = admin_password or "admin123"
+
     doctor_user = User(
-        email="dr.ananya@wristai.hospital",
-        password_hash=hash_password("doctor123"),
-        name="Dr. Ananya S",
+        email=doctor_email,
+        password_hash=hash_password(doctor_password),
+        name=os.getenv("INITIAL_DOCTOR_NAME", "Dr. Ananya S"),
         role="doctor",
         department="Radiology",
         role_title="Radiologist",
@@ -63,9 +87,9 @@ def seed_database():
         is_active=True
     )
     admin_user = User(
-        email="admin@wristai.hospital",
-        password_hash=hash_password("admin123"),
-        name="Admin",
+        email=admin_email,
+        password_hash=hash_password(admin_password),
+        name=os.getenv("INITIAL_ADMIN_NAME", "Admin"),
         role="admin",
         department="Hospital Administration",
         role_title="Hospital Administrator",

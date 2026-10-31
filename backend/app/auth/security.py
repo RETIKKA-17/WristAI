@@ -12,7 +12,19 @@ from backend.app.database.session import get_db
 from backend.app.models.entities import User
 
 # JWT Configuration
-SECRET_KEY = os.getenv("JWT_SECRET", "wristai_hospital_super_secret_jwt_key_2026_xray")
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development").lower()
+RAW_SECRET = os.getenv("JWT_SECRET", "").strip()
+
+if ENVIRONMENT == "production" or os.getenv("RENDER") or os.getenv("RAILWAY_ENVIRONMENT"):
+    if not RAW_SECRET or RAW_SECRET in ("wristai_hospital_super_secret_jwt_key_2026_xray", "default_secret", "secret"):
+        raise RuntimeError(
+            "FATAL SECURITY ERROR: JWT_SECRET environment variable is missing or set to an insecure default. "
+            "In production, configure a cryptographically secure random secret (at least 32 characters)."
+        )
+    SECRET_KEY = RAW_SECRET
+else:
+    SECRET_KEY = RAW_SECRET or "wristai_local_development_jwt_secret_key_2026"
+
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 # 24 hours
 

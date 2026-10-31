@@ -16,24 +16,38 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS configuration
-cors_origins_env = os.getenv("CORS_ORIGINS", "*")
-if cors_origins_env == "*":
-    origins = ["*"]
+# Secure CORS configuration
+environment = os.getenv("ENVIRONMENT", "development").lower()
+is_production = environment == "production" or bool(os.getenv("RENDER")) or bool(os.getenv("RAILWAY_ENVIRONMENT"))
+
+cors_origins_env = os.getenv("CORS_ORIGINS", "").strip()
+frontend_url = os.getenv("FRONTEND_URL", "").strip().rstrip("/")
+
+origins: list[str] = []
+if cors_origins_env and cors_origins_env != "*":
+    origins = [o.strip().rstrip("/") for o in cors_origins_env.split(",") if o.strip()]
+elif frontend_url:
+    origins = [frontend_url]
+elif not is_production:
+    origins = ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000"]
+
+# Strict regex matching: in production only HTTPS on Render or Railway subdomains
+if is_production:
+    default_origin_regex = r"^https:\/\/[a-zA-Z0-9-]+\.(onrender\.com|up\.railway\.app)$"
 else:
-    origins = [o.strip() for o in cors_origins_env.split(",") if o.strip()]
+    default_origin_regex = r"^https?:\/\/(localhost|127\.0\.0\.1|.*\.onrender\.com|.*\.railway\.app)(:\d+)?$"
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_origin_regex=os.getenv("CORS_ORIGIN_REGEX", r"https://.*\.railway\.app|http://localhost:.*|http://127\.0\.0\.1:.*"),
+    allow_origin_regex=os.getenv("CORS_ORIGIN_REGEX", default_origin_regex),
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
 )
 
-# Static files for X-ray uploads & thumbnails
-uploads_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "uploads"))
+# Static files for X-ray uploads & thumbnails (supports persistent disk mount via UPLOADS_DIR)
+uploads_dir = os.getenv("UPLOADS_DIR", os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "uploads")))
 os.makedirs(uploads_dir, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
 

@@ -1,5 +1,6 @@
 # =====================================================================
-# WristAI - FastAPI + PyTorch Backend Dockerfile for Railway Deployment
+# WristAI - FastAPI + PyTorch Backend Dockerfile for Production Deployment
+# Supports: Render (PORT=10000) & Railway (PORT dynamic)
 # =====================================================================
 FROM python:3.11-slim
 
@@ -31,16 +32,23 @@ COPY backend/ ./backend/
 COPY models/ ./models/
 COPY data/ ./data/
 
+# Self-healing check: Ensure wrist_fracture_model.pth is the real 134MB binary and not an unpulled Git LFS pointer text file
+RUN if [ $(wc -c < "/app/models/wrist_fracture_model.pth") -lt 1000000 ]; then \
+        echo "[Docker Build] Detected Git LFS pointer. Downloading 134MB model weights from GitHub LFS..." && \
+        curl -fSL -o /app/models/wrist_fracture_model.pth https://media.githubusercontent.com/media/RETIKKA-17/WristAI/main/models/wrist_fracture_model.pth; \
+    fi && \
+    echo "[Docker Build] Verified model weight size: $(wc -c < /app/models/wrist_fracture_model.pth) bytes"
+
 # Create runtime directories for SQLite data store and uploaded radiographs
 RUN mkdir -p /app/backend/uploads /app/backend/data_store
 
-# Railway dynamically assigns $PORT
-EXPOSE 8000
+# Dynamic port exposure
+EXPOSE 10000 8000
 
 # Container healthcheck
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD curl -f http://localhost:${PORT:-8000}/api/health || exit 1
+    CMD curl -f http://localhost:${PORT:-10000}/api/health || exit 1
 
-# Production startup using Uvicorn bound to Railway's $PORT
-CMD ["sh", "-c", "uvicorn backend.app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# Production startup using Uvicorn bound to Render/Railway dynamic $PORT
+CMD ["sh", "-c", "uvicorn backend.app.main:app --host 0.0.0.0 --port ${PORT:-10000}"]
 
