@@ -3,11 +3,16 @@ import {
   DoctorDashboardStats, AdminDashboardStats, AnalysisResultPayload 
 } from '../types';
 
-const rawApiUrl = (
+let rawApiUrl = (
   import.meta.env.VITE_API_URL || 
   import.meta.env.VITE_API_BASE_URL || 
   ''
 ).trim().replace(/\/$/, '');
+
+// If Render or cloud provider passes an internal service name without TLD (e.g. 'wristai-backend-6zgo')
+if (rawApiUrl && !rawApiUrl.includes('.') && !rawApiUrl.includes('localhost') && !rawApiUrl.includes('127.0.0.1')) {
+  rawApiUrl = `${rawApiUrl}.onrender.com`;
+}
 
 export const API_BASE_URL = (
   rawApiUrl && !rawApiUrl.startsWith('http://') && !rawApiUrl.startsWith('https://')

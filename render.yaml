@@ -61,7 +61,4 @@ services:
         destination: /index.html
     envVars:
       - key: VITE_API_BASE_URL
-        fromService:
-          type: web
-          name: wristai-backend
-          property: host
+        value: https://wristai-backend-6zgo.onrender.com
