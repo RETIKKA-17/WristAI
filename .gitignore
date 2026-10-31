@@ -1,0 +1,58 @@
+# Python & Virtual Environments
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+
+# Node & Frontend Build Outputs
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+frontend/dist/
+frontend/node_modules/
+
+# Local Environment Variables & Secrets
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Runtime Patient Uploads & Local Databases (Sensitive Medical Data)
+backend/uploads/*
+!backend/uploads/.gitkeep
+backend/data_store/*.db
+backend/data_store/*.sqlite*
+!backend/data_store/.gitkeep
+*.db
+*.sqlite
+*.sqlite3
+
+# Development Scratch, Logs & System Files
+scratch/
+outputs/
+.system_generated/
+*.log
+
+# Large Raw PDFs and Development Exploration Assets
+*.pdf
+contact_sheet.png
+admin_portal_pages/
+annotation_crops/
+clinical_crops/
+extracted_pages/
+training/
+
+# OS & IDE Settings
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo

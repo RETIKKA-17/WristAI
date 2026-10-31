@@ -1,0 +1,29 @@
+{
+  "model_architecture": "ResNet-18",
+  "num_classes": 2,
+  "classes": [
+    "NORMAL",
+    "FRACTURE"
+  ],
+  "input_resolution": [
+    224,
+    224
+  ],
+  "resize_dimension": 256,
+  "crop_dimension": 224,
+  "color_channels": 3,
+  "normalization": {
+    "mean": [
+      0.485,
+      0.456,
+      0.406
+    ],
+    "std": [
+      0.229,
+      0.224,
+      0.225
+    ]
+  },
+  "color_space": "RGB",
+  "interpolation": "bilinear"
+}

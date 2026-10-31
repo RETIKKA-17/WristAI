@@ -1,0 +1,6 @@
+filename,class_label,source_page,image_type,view,description,annotated_counterpart_page
+processed/fracture/wrist_case_01_obvious_fracture_p01.png,fracture,1,obvious_fracture,Lateral,Distal radius fracture with dorsal cortical disruption and displacement,2
+processed/fracture/wrist_case_02_obvious_fracture_p03.png,fracture,3,obvious_fracture,AP,Comminuted distal radius articular and metaphyseal fracture,4
+processed/normal/wrist_case_03_normal_p05.png,normal,5,normal,AP,"Normal intact wrist with smooth cortices, preserved radioulnar relationships and carpal arcs",None (Uninjured)
+processed/fracture/wrist_case_04_subtle_fracture_p06.png,fracture,6,subtle_fracture,AP,Subtle non-displaced transverse metaphyseal fracture line across distal radius,7
+processed/fracture/wrist_case_05_subtle_fracture_p08.png,fracture,8,subtle_fracture,AP,Subtle radial styloid / distal radial cortical fracture line,9

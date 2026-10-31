@@ -1,0 +1,92 @@
+[
+  {
+    "case_id": "CASE_01",
+    "original_image": "page_01_xref_5.png",
+    "source_pdf_page": 1,
+    "annotated_pdf_page": 2,
+    "marking_type": "RED_RECTANGLE",
+    "pixel_box_clean": {
+      "x_min": 402.3,
+      "y_min": 571.8,
+      "x_max": 728.5,
+      "y_max": 754.9,
+      "width": 326.1,
+      "height": 183.1
+    },
+    "x_min": 0.37045,
+    "y_min": 0.3946,
+    "x_max": 0.67077,
+    "y_max": 0.52097,
+    "annotation_source": "PDF_REFERENCE",
+    "mapping_status": "VERIFIED"
+  },
+  {
+    "case_id": "CASE_02",
+    "original_image": "page_03_xref_12.png",
+    "source_pdf_page": 3,
+    "annotated_pdf_page": 4,
+    "marking_type": "RED_RECTANGLE",
+    "pixel_box_clean": {
+      "x_min": 353.1,
+      "y_min": 599.7,
+      "x_max": 633.3,
+      "y_max": 795.9,
+      "width": 280.2,
+      "height": 196.2
+    },
+    "x_min": 0.32515,
+    "y_min": 0.41418,
+    "x_max": 0.58317,
+    "y_max": 0.54965,
+    "annotation_source": "PDF_REFERENCE",
+    "mapping_status": "VERIFIED"
+  },
+  {
+    "case_id": "CASE_04",
+    "original_image": "page_06_xref_21.png",
+    "source_pdf_page": 6,
+    "annotated_pdf_page": 7,
+    "marking_type": "RED_RECTANGLE",
+    "pixel_box_clean": {
+      "x_min": 332.1,
+      "y_min": 689.7,
+      "x_max": 559.2,
+      "y_max": 819.8,
+      "width": 227.2,
+      "height": 130.1
+    },
+    "x_min": 0.30577,
+    "y_min": 0.47628,
+    "x_max": 0.51496,
+    "y_max": 0.56615,
+    "annotation_source": "PDF_REFERENCE",
+    "mapping_status": "VERIFIED"
+  },
+  {
+    "case_id": "CASE_05",
+    "original_image": "page_08_xref_27.png",
+    "source_pdf_page": 8,
+    "annotated_pdf_page": 9,
+    "marking_type": "RED_DASHED_CIRCLE",
+    "pixel_box_clean": {
+      "x_min": 352.4,
+      "y_min": 634.0,
+      "x_max": 497.8,
+      "y_max": 780.0,
+      "width": 145.4,
+      "height": 146.0
+    },
+    "x_min": 0.32447,
+    "y_min": 0.43785,
+    "x_max": 0.45839,
+    "y_max": 0.53867,
+    "annotation_source": "PDF_REFERENCE",
+    "mapping_status": "VERIFIED",
+    "verified_dashed_circle_box": [
+      0.32447,
+      0.43785,
+      0.45839,
+      0.53867
+    ]
+  }
+]
