@@ -1,5 +1,6 @@
 import os
 import uuid
+import threading
 from datetime import datetime
 from typing import Optional, List
 from PIL import Image
@@ -28,6 +29,34 @@ DISCLAIMER_TEXT = (
     "It is not clinically validated and may produce incorrect results, particularly on unseen X-rays. "
     "It must not be used for medical diagnosis or treatment decisions."
 )
+
+MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB maximum file upload size
+MAX_IMAGE_DIMENSION = 4096                # 4096px maximum width or height
+CHUNK_SIZE_BYTES = 64 * 1024              # 64 KB chunk size for bounded streaming
+
+# Module-level thread lock to serialize AI inference executions and prevent memory spikes
+_inference_sync_lock = threading.Lock()
+
+def _run_ai_pipeline(saved_path: str, clean_base: str):
+    """
+    Synchronous CPU-bound AI pipeline executed safely in a worker thread pool.
+    Guarded by _inference_sync_lock to serialize PyTorch execution and prevent memory spikes on 512MB RAM.
+    """
+    with _inference_sync_lock:
+        inference_service = get_inference_service()
+        inference_result = inference_service.run_inference(saved_path)
+
+        pred_label = inference_result["prediction"]
+        loc_service = get_localization_service()
+        loc_info = loc_service.match_reference(saved_path, pred_label)
+        gradcam_filename = loc_service.generate_gradcam_overlay(saved_path, f"{clean_base}_gradcam.png")
+
+        ref_heatmap_filename = None
+        if loc_info.get("has_localization") and loc_info.get("bounding_box"):
+            ref_heatmap_filename = loc_service.generate_reference_heatmap(
+                saved_path, loc_info["bounding_box"], f"{clean_base}_ref_heatmap.png"
+            )
+        return inference_result, loc_info, gradcam_filename, ref_heatmap_filename
 
 @router.get("/dashboard-stats")
 def get_dashboard_stats(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
@@ -90,7 +119,7 @@ def get_dashboard_stats(db: Session = Depends(get_db), current_user: User = Depe
     }
 
 @router.post("/analyze", response_model=AnalysisResponse)
-async def analyze_xray(
+def analyze_xray(
     file: UploadFile = File(...),
     patient_id: str = Form(...),
     patient_name: str = Form(...),
@@ -113,18 +142,66 @@ async def analyze_xray(
     saved_filename = f"{clean_base}{ext}"
     saved_path = os.path.join(UPLOADS_DIR, saved_filename)
 
-    file_bytes = await file.read()
-    with open(saved_path, "wb") as f:
-        f.write(file_bytes)
-
-    # Validate image readable by PIL
+    total_bytes_read = 0
     try:
-        pil_img = Image.open(saved_path)
-        pil_img.verify()
-        pil_img = Image.open(saved_path) # Reopen after verify
-    except Exception as e:
+        with open(saved_path, "wb") as f:
+            raw_file = getattr(file, "file", file)
+            while True:
+                chunk = raw_file.read(CHUNK_SIZE_BYTES)
+                if not chunk:
+                    break
+                total_bytes_read += len(chunk)
+                if total_bytes_read > MAX_UPLOAD_SIZE_BYTES:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"Uploaded file exceeds maximum allowed limit of 10MB ({total_bytes_read / (1024*1024):.2f}MB read)."
+                    )
+                f.write(chunk)
+
+        if total_bytes_read == 0:
+            raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+    except Exception:
+        # Guarantee removal of partial or oversized file on any upload failure
         if os.path.exists(saved_path):
-            os.remove(saved_path)
+            try:
+                os.remove(saved_path)
+            except OSError:
+                pass
+        raise
+
+    # Validate image readable by PIL and dimension guardrails
+    pil_img = None
+    try:
+        with Image.open(saved_path) as verify_img:
+            verify_img.verify()
+
+        pil_img = Image.open(saved_path)  # Reopen after verify
+        if pil_img.width > MAX_IMAGE_DIMENSION or pil_img.height > MAX_IMAGE_DIMENSION:
+            w, h = pil_img.width, pil_img.height
+            pil_img.close()
+            pil_img = None
+            if os.path.exists(saved_path):
+                try:
+                    os.remove(saved_path)
+                except OSError:
+                    pass
+            raise HTTPException(
+                status_code=400,
+                detail=f"Image dimensions ({w}x{h}) exceed maximum allowed limit of {MAX_IMAGE_DIMENSION}x{MAX_IMAGE_DIMENSION}px."
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        if pil_img:
+            try:
+                pil_img.close()
+            except Exception:
+                pass
+        if os.path.exists(saved_path):
+            try:
+                os.remove(saved_path)
+            except OSError:
+                pass
         raise HTTPException(status_code=400, detail=f"Corrupted or invalid image file: {str(e)}")
 
     # 3. Create thumbnail
@@ -137,9 +214,12 @@ async def analyze_xray(
     except Exception:
         thumb_filename = saved_filename
 
-    # 4. Run FRESH PyTorch ResNet-18 model inference (No caching!)
-    inference_service = get_inference_service()
-    inference_result = inference_service.run_inference(saved_path)
+    # 4. Run PyTorch ResNet-18 model inference and localization
+    # Serialized via _inference_sync_lock to prevent concurrent memory spikes on 512MB RAM
+    # Handled safely within FastAPI's threadpool worker without blocking event loop
+    inference_result, loc_info, gradcam_filename, ref_heatmap_filename = _run_ai_pipeline(
+        saved_path, clean_base
+    )
 
     pred_label = inference_result["prediction"]
     norm_score = inference_result["normal_score"]
@@ -147,18 +227,12 @@ async def analyze_xray(
     conf = inference_result["confidence"]
     latency = inference_result["inference_time_ms"]
 
-    # 5. Localization & Attention Heatmap Analysis
-    loc_service = get_localization_service()
-    loc_info = loc_service.match_reference(saved_path, pred_label)
-    gradcam_filename = loc_service.generate_gradcam_overlay(saved_path, f"{clean_base}_gradcam.png")
     gradcam_url = f"/uploads/{gradcam_filename}" if gradcam_filename else None
-
-    ref_heatmap_filename = None
-    if loc_info.get("has_localization") and loc_info.get("bounding_box"):
-        ref_heatmap_filename = loc_service.generate_reference_heatmap(
-            saved_path, loc_info["bounding_box"], f"{clean_base}_ref_heatmap.png"
-        )
     ref_heatmap_url = f"/uploads/{ref_heatmap_filename}" if ref_heatmap_filename else None
+
+    # Sanitize string inputs in case Form defaults are passed directly
+    clean_study_date = study_date if isinstance(study_date, str) and study_date.strip() else None
+    clean_clinical_notes = clinical_notes if isinstance(clinical_notes, str) and clinical_notes.strip() else None
 
     # 6. Check or Create Patient
     pat = db.query(Patient).filter(Patient.patient_id == patient_id).first()
@@ -170,16 +244,16 @@ async def analyze_xray(
             sex=sex,
             phone_number="+91 98765 43210",
             status="Active",
-            last_visit=study_date or datetime.now().strftime("%d %b %Y"),
+            last_visit=clean_study_date or datetime.now().strftime("%d %b %Y"),
             total_cases=1,
-            clinical_history=clinical_notes
+            clinical_history=clean_clinical_notes
         )
         db.add(pat)
         db.commit()
         db.refresh(pat)
     else:
         pat.total_cases += 1
-        pat.last_visit = study_date or datetime.now().strftime("%d %b %Y")
+        pat.last_visit = clean_study_date or datetime.now().strftime("%d %b %Y")
         db.commit()
 
     # 7. Generate Case ID
@@ -199,10 +273,10 @@ async def analyze_xray(
         doctor_id=None,
         doctor_name=current_user.name or "Dr. Ananya S",
         department=current_user.department or "Radiology",
-        study_date=study_date or datetime.now().strftime("%d %b %Y, %I:%M %p"),
+        study_date=clean_study_date or datetime.now().strftime("%d %b %Y, %I:%M %p"),
         image_filename=saved_filename,
         thumbnail_filename=thumb_filename,
-        clinical_notes=clinical_notes,
+        clinical_notes=clean_clinical_notes,
         ai_prediction=pred_label,
         normal_score=norm_score,
         fracture_score=frac_score,
@@ -356,6 +430,13 @@ def get_case_detail(id: int, db: Session = Depends(get_db), current_user: User =
         loc_service.generate_gradcam_overlay(img_path, gradcam_filename)
         
     gradcam_url = f"/uploads/{gradcam_filename}" if os.path.exists(gradcam_path) else None
+
+    # Reference Heatmap overlay
+    ref_heatmap_filename = f"{base_stem}_ref_heatmap.png"
+    ref_heatmap_path = os.path.join(UPLOADS_DIR, ref_heatmap_filename)
+    if not os.path.exists(ref_heatmap_path) and os.path.exists(img_path) and localization.get("has_localization") and localization.get("bounding_box"):
+        loc_service.generate_reference_heatmap(img_path, localization["bounding_box"], ref_heatmap_filename)
+    ref_heatmap_url = f"/uploads/{ref_heatmap_filename}" if os.path.exists(ref_heatmap_path) else None
 
     return {
         "id": c.id,

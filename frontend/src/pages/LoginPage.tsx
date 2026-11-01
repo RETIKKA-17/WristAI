@@ -25,7 +25,7 @@ interface LoginPageProps {
 export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
   const [role, setRole] = useState<'doctor' | 'admin'>('doctor');
   const [email, setEmail] = useState('dr.ananya@wristai.hospital');
-  const [password, setPassword] = useState('doctor123');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -36,10 +36,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
     setErrorMsg(null);
     if (newRole === 'doctor') {
       setEmail('dr.ananya@wristai.hospital');
-      setPassword('doctor123');
+      setPassword('');
     } else {
       setEmail('admin@wristai.hospital');
-      setPassword('admin123');
+      setPassword('');
     }
   };
 
@@ -300,11 +300,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
               </button>
             </form>
 
-            {/* Quick Demo Access Card displaying BOTH Doctor and Admin credentials clearly */}
-            <div className="p-3.5 bg-blue-50/70 border border-blue-200/80 rounded-2xl text-xs space-y-2">
-              <div className="flex items-center justify-between text-blue-950 font-bold text-[11px] uppercase tracking-wider">
-                <span>Demo Login Credentials</span>
-                <span className="text-[10px] lowercase text-blue-600 font-normal">Click card to switch & auto-fill</span>
+            {/* Authorized Hospital Portals */}
+            <div className="p-3.5 bg-slate-50/80 border border-slate-200/80 rounded-2xl text-xs space-y-2">
+              <div className="flex items-center justify-between text-slate-800 font-bold text-[11px] uppercase tracking-wider">
+                <span>Authorized Hospital Portals</span>
+                <span className="text-[10px] lowercase text-slate-500 font-normal">Click to switch portal</span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
@@ -315,17 +315,17 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
                   className={`text-left p-2.5 rounded-xl border transition cursor-pointer ${
                     role === 'doctor'
                       ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
-                      : 'bg-white text-slate-700 border-blue-100 hover:border-blue-300'
+                      : 'bg-white text-slate-700 border-slate-200 hover:border-blue-300'
                   }`}
                 >
                   <div className="font-bold flex items-center gap-1.5 text-xs">
                     <Stethoscope className="w-3.5 h-3.5" /> Doctor Portal
                   </div>
                   <div className="mt-1 text-[10px] font-mono truncate">
-                    Email: <span className="underline">dr.ananya@wristai.hospital</span>
+                    Account: <span className="underline">dr.ananya@wristai.hospital</span>
                   </div>
-                  <div className="text-[10px] font-mono opacity-90">
-                    Password: <span className="font-bold">doctor123</span>
+                  <div className="text-[10px] opacity-80 mt-0.5">
+                    Radiology & Fracture Analysis
                   </div>
                 </button>
 
@@ -336,17 +336,17 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
                   className={`text-left p-2.5 rounded-xl border transition cursor-pointer ${
                     role === 'admin'
                       ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
-                      : 'bg-white text-slate-700 border-blue-100 hover:border-blue-300'
+                      : 'bg-white text-slate-700 border-slate-200 hover:border-blue-300'
                   }`}
                 >
                   <div className="font-bold flex items-center gap-1.5 text-xs">
                     <Building2 className="w-3.5 h-3.5" /> Hospital Admin
                   </div>
                   <div className="mt-1 text-[10px] font-mono truncate">
-                    Email: <span className="underline">admin@wristai.hospital</span>
+                    Account: <span className="underline">admin@wristai.hospital</span>
                   </div>
-                  <div className="text-[10px] font-mono opacity-90">
-                    Password: <span className="font-bold">admin123</span>
+                  <div className="text-[10px] opacity-80 mt-0.5">
+                    Hospital Systems Administration
                   </div>
                 </button>
               </div>

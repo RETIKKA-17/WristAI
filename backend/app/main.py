@@ -65,6 +65,17 @@ if os.path.exists(frontend_dist):
 def on_startup():
     print("[WristAI API] Running startup initialization...")
     seed_database()
+    print("[WristAI API] Pre-warming PyTorch ResNet-18 model and SIFT localization...")
+    try:
+        from backend.app.services.inference_service import get_inference_service
+        from backend.app.services.localization_service import get_localization_service
+        get_inference_service()
+        get_localization_service()
+        import gc
+        gc.collect()
+        print("[WristAI API] Pre-warming complete. Backend is ready for instantaneous inference.")
+    except Exception as e:
+        print(f"[WristAI API] Warning during model pre-warming: {e}")
 
 @app.get("/")
 def root():

@@ -1,6 +1,8 @@
 import os
 import json
 import time
+import threading
+import gc
 from PIL import Image
 import torch
 import torch.nn as nn
@@ -17,6 +19,9 @@ class WristFractureInferenceService:
         self.class_names_path = class_names_path or os.path.join(base_dir, "models", "class_names.json")
         self.preprocessing_path = preprocessing_path or os.path.join(base_dir, "models", "preprocessing.json")
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        if self.device == "cpu":
+            # Constrain CPU threads to prevent thread-pool memory explosion on multi-core cloud containers
+            torch.set_num_threads(1)
 
         if not os.path.exists(self.checkpoint_path):
             raise FileNotFoundError(f"Model checkpoint not found: {self.checkpoint_path}")
@@ -64,9 +69,13 @@ class WristFractureInferenceService:
             nn.Linear(in_features, self.prep_config["num_classes"])
         )
 
-        # Load trained weights
-        checkpoint = torch.load(self.checkpoint_path, map_location=self.device)
+        # Load trained weights with memory mapping (mmap=True) to avoid allocating RAM for unneeded optimizer states
+        checkpoint = torch.load(self.checkpoint_path, map_location=self.device, mmap=True)
         self.model.load_state_dict(checkpoint["model_state_dict"])
+        # Release unneeded raw checkpoint dictionary & optimizer states immediately
+        del checkpoint
+        gc.collect()
+
         self.model.to(self.device)
         self.model.eval()
         print(f"[Inference Service] Successfully loaded ResNet-18 checkpoint from '{self.checkpoint_path}' on {self.device}.")
@@ -91,8 +100,8 @@ class WristFractureInferenceService:
         # Transform and add batch dimension
         tensor_img = self.transform(img_pil).unsqueeze(0).to(self.device)
 
-        # Run model forward pass dynamically
-        with torch.no_grad():
+        # Run model forward pass dynamically with inference_mode for minimal memory overhead
+        with torch.inference_mode():
             logits = self.model(tensor_img)
             probs = torch.softmax(logits, dim=1).cpu().numpy()[0]
             pred_idx = int(torch.argmax(logits, dim=1).item())
@@ -123,11 +132,14 @@ class WristFractureInferenceService:
             "raw_logits": [round(float(l), 4) for l in logits.cpu().numpy()[0]]
         }
 
-# Global singleton instance
+# Global singleton instance with thread-safe lock
 _inference_instance = None
+_inference_init_lock = threading.Lock()
 
 def get_inference_service() -> WristFractureInferenceService:
     global _inference_instance
     if _inference_instance is None:
-        _inference_instance = WristFractureInferenceService()
+        with _inference_init_lock:
+            if _inference_instance is None:
+                _inference_instance = WristFractureInferenceService()
     return _inference_instance

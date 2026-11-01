@@ -1,6 +1,8 @@
 import os
 import json
 import hashlib
+import threading
+import gc
 import cv2
 import numpy as np
 from typing import Optional, Dict, Any, List
@@ -552,22 +554,39 @@ class LocalizationService:
             ])
 
             input_tensor = transform(img_pil).unsqueeze(0).to(device)
-            model.zero_grad()
-            logits = model(input_tensor)
-            
-            # Target fracture class (index 1)
-            target_score = logits[0, 1]
-            target_score.backward()
-
-            # Remove hooks
-            h_fwd.remove()
-            h_bwd.remove()
+            try:
+                model.zero_grad(set_to_none=True)
+                logits = model(input_tensor)
+                
+                # Target fracture class (index 1)
+                target_score = logits[0, 1]
+                target_score.backward()
+            finally:
+                # Guaranteed cleanup of hooks even on exception
+                try:
+                    h_fwd.remove()
+                except Exception:
+                    pass
+                try:
+                    h_bwd.remove()
+                except Exception:
+                    pass
+                # Immediately purge all parameter gradients from ResNet-18 to free ~45MB
+                model.zero_grad(set_to_none=True)
 
             if not gradients or not activations:
                 return None
 
             grad = gradients[0].detach().cpu().numpy()[0]
             act = activations[0].detach().cpu().numpy()[0]
+
+            # Free intermediate PyTorch tensor references
+            del gradients
+            del activations
+            del input_tensor
+            del logits
+            del target_score
+            gc.collect()
 
             weights = np.mean(grad, axis=(1, 2))
             cam = np.zeros(act.shape[1:], dtype=np.float32)
@@ -665,9 +684,12 @@ class LocalizationService:
             return None
 
 _localization_instance = None
+_localization_init_lock = threading.Lock()
 
 def get_localization_service() -> LocalizationService:
     global _localization_instance
     if _localization_instance is None:
-        _localization_instance = LocalizationService()
+        with _localization_init_lock:
+            if _localization_instance is None:
+                _localization_instance = LocalizationService()
     return _localization_instance

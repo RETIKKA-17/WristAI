@@ -26,14 +26,26 @@ def sync_initial_credentials(db: Session) -> bool:
     raw_adm_pwd = os.getenv("INITIAL_ADMIN_PASSWORD", "").strip()
 
     if is_prod:
-        # Never allow demo fallback passwords in production
-        if not raw_doc_pwd or raw_doc_pwd in ("doctor123", "password", "123456", "admin"):
+        insecure_demo_passwords = {"doctor123", "admin123", "password", "123456", "admin"}
+        if not raw_doc_pwd:
             raise ValueError(
-                "Production credential sync failed: INITIAL_DOCTOR_PASSWORD must be configured with a valid, secure password (demo defaults are prohibited in production)."
+                "Production seeding failed: INITIAL_DOCTOR_PASSWORD environment variable is missing. "
+                "Configure a secure password in the Render Dashboard (or use generateValue in render.yaml)."
             )
-        if not raw_adm_pwd or raw_adm_pwd in ("admin123", "password", "123456", "admin"):
+        if raw_doc_pwd in insecure_demo_passwords or len(raw_doc_pwd) < 8:
             raise ValueError(
-                "Production credential sync failed: INITIAL_ADMIN_PASSWORD must be configured with a valid, secure password (demo defaults are prohibited in production)."
+                "Production seeding failed: INITIAL_DOCTOR_PASSWORD is too weak or set to a known demo default. "
+                "Configure a secure password (minimum 8 characters) in the Render Dashboard."
+            )
+        if not raw_adm_pwd:
+            raise ValueError(
+                "Production seeding failed: INITIAL_ADMIN_PASSWORD environment variable is missing. "
+                "Configure a secure password in the Render Dashboard (or use generateValue in render.yaml)."
+            )
+        if raw_adm_pwd in insecure_demo_passwords or len(raw_adm_pwd) < 8:
+            raise ValueError(
+                "Production seeding failed: INITIAL_ADMIN_PASSWORD is too weak or set to a known demo default. "
+                "Configure a secure password (minimum 8 characters) in the Render Dashboard."
             )
         doctor_password = raw_doc_pwd
         admin_password = raw_adm_pwd
@@ -129,13 +141,26 @@ def seed_database():
     raw_adm_pwd = os.getenv("INITIAL_ADMIN_PASSWORD", "").strip()
 
     if is_prod:
-        if not raw_doc_pwd or raw_doc_pwd in ("doctor123", "password", "123456", "admin"):
+        insecure_demo_passwords = {"doctor123", "admin123", "password", "123456", "admin"}
+        if not raw_doc_pwd:
             raise ValueError(
-                "Initial seeding failed: INITIAL_DOCTOR_PASSWORD must be configured with a valid, secure password in production."
+                "Production seeding failed: INITIAL_DOCTOR_PASSWORD environment variable is missing. "
+                "Configure a secure password in the Render Dashboard (or use generateValue in render.yaml)."
             )
-        if not raw_adm_pwd or raw_adm_pwd in ("admin123", "password", "123456", "admin"):
+        if raw_doc_pwd in insecure_demo_passwords or len(raw_doc_pwd) < 8:
             raise ValueError(
-                "Initial seeding failed: INITIAL_ADMIN_PASSWORD must be configured with a valid, secure password in production."
+                "Production seeding failed: INITIAL_DOCTOR_PASSWORD is too weak or set to a known demo default. "
+                "Configure a secure password (minimum 8 characters) in the Render Dashboard."
+            )
+        if not raw_adm_pwd:
+            raise ValueError(
+                "Production seeding failed: INITIAL_ADMIN_PASSWORD environment variable is missing. "
+                "Configure a secure password in the Render Dashboard (or use generateValue in render.yaml)."
+            )
+        if raw_adm_pwd in insecure_demo_passwords or len(raw_adm_pwd) < 8:
+            raise ValueError(
+                "Production seeding failed: INITIAL_ADMIN_PASSWORD is too weak or set to a known demo default. "
+                "Configure a secure password (minimum 8 characters) in the Render Dashboard."
             )
         doctor_password = raw_doc_pwd
         admin_password = raw_adm_pwd
