@@ -69,15 +69,20 @@ class WristFractureInferenceService:
             nn.Linear(in_features, self.prep_config["num_classes"])
         )
 
-        # Load trained weights with memory mapping (mmap=True) to avoid allocating RAM for unneeded optimizer states
-        checkpoint = torch.load(self.checkpoint_path, map_location=self.device, mmap=True)
-        self.model.load_state_dict(checkpoint["model_state_dict"])
+        # Load trained weights with memory mapping (mmap=True) and weights_only=True for minimal memory overhead
+        checkpoint = torch.load(self.checkpoint_path, map_location=self.device, mmap=True, weights_only=True)
+        state_dict = checkpoint["model_state_dict"] if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint else checkpoint
+        self.model.load_state_dict(state_dict)
         # Release unneeded raw checkpoint dictionary & optimizer states immediately
         del checkpoint
+        del state_dict
         gc.collect()
 
         self.model.to(self.device)
         self.model.eval()
+        # Freeze model parameters to prevent PyTorch from allocating 45MB parameter gradients during Grad-CAM backpropagation
+        for param in self.model.parameters():
+            param.requires_grad = False
         print(f"[Inference Service] Successfully loaded ResNet-18 checkpoint from '{self.checkpoint_path}' on {self.device}.")
 
     def run_inference(self, image_input):

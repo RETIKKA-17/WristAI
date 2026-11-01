@@ -39,6 +39,7 @@ scratch/
 outputs/
 .system_generated/
 *.log
+data/sift_reference_cache.npz
 
 # Large Raw PDFs and Development Exploration Assets
 *.pdf

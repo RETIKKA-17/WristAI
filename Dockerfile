@@ -7,7 +7,13 @@ FROM python:3.11-slim
 # Prevent Python from writing bytecode and buffer stdout/stderr
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/app
+    PYTHONPATH=/app \
+    MALLOC_ARENA_MAX=2 \
+    OMP_NUM_THREADS=1 \
+    OPENBLAS_NUM_THREADS=1 \
+    MKL_NUM_THREADS=1 \
+    VECLIB_MAXIMUM_THREADS=1 \
+    NUMEXPR_NUM_THREADS=1
 
 WORKDIR /app
 
@@ -38,6 +44,11 @@ RUN if [ $(wc -c < "/app/models/wrist_fracture_model.pth") -lt 1000000 ]; then \
         curl -fSL -o /app/models/wrist_fracture_model.pth https://media.githubusercontent.com/media/RETIKKA-17/WristAI/main/models/wrist_fracture_model.pth; \
     fi && \
     echo "[Docker Build] Verified model weight size: $(wc -c < /app/models/wrist_fracture_model.pth) bytes"
+
+# Optimize model checkpoint (strip 90MB training optimizer states) and build SIFT reference cache
+RUN python3 -c "import torch; ckpt = torch.load('/app/models/wrist_fracture_model.pth', map_location='cpu'); torch.save({'model_state_dict': ckpt['model_state_dict']}, '/app/models/wrist_fracture_model.pth')" && \
+    python3 -c "from backend.app.services.localization_service import generate_sift_cache; generate_sift_cache('/app/data/sift_reference_cache.npz')" && \
+    echo "[Docker Build] Post-optimization model weight size: $(wc -c < /app/models/wrist_fracture_model.pth) bytes"
 
 # Create runtime directories for SQLite data store and uploaded radiographs
 RUN mkdir -p /app/backend/uploads /app/backend/data_store

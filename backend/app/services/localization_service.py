@@ -70,7 +70,62 @@ class LocalizationService:
         with open(self.annotations_path, "r") as f:
             self.annotations = json.load(f)
 
-        # Map of reference files to include clean and annotated counterparts
+        cache_path = os.path.join(self.base_dir, "data", "sift_reference_cache.npz")
+        if os.path.exists(cache_path):
+            try:
+                cache_data = np.load(cache_path, allow_pickle=True)
+                meta = json.loads(str(cache_data["metadata_json"][0]))
+                self.file_hashes = meta["hashes"]["file_hashes"]
+                self.md5_hashes = meta["hashes"]["md5_hashes"]
+                self.pixel_hashes = meta["hashes"]["pixel_hashes"]
+                dhashes = meta["hashes"]["dhashes"]
+
+                for item in meta["items"]:
+                    idx = item["idx"]
+                    kp_arr = cache_data[f"kp_{idx}"]
+                    des = cache_data[f"des_{idx}"]
+                    shape = tuple(cache_data[f"shape_{idx}"])
+                    kp = [
+                        cv2.KeyPoint(
+                            x=float(p[0]), y=float(p[1]), size=float(p[2]), angle=float(p[3]),
+                            response=float(p[4]), octave=int(p[5]), class_id=int(p[6])
+                        )
+                        for p in kp_arr
+                    ]
+                    self.sift_bank.append({
+                        "case_id": item["case_id"],
+                        "filename": item["filename"],
+                        "is_annotated": item["is_annotated"],
+                        "kp": kp,
+                        "des": des,
+                        "shape": shape,
+                        "box": item["box"],
+                        "pair": item["pair"]
+                    })
+
+                    cid = item["case_id"]
+                    if not item["is_annotated"] and cid not in self.ref_cases:
+                        img_512 = cache_data[f"img512_{cid}"]
+                        found_path = os.path.join(self.raw_dir, item["filename"])
+                        if not os.path.exists(found_path):
+                            found_path = os.path.join(self.base_dir, "extracted_pages", item["filename"])
+                        self.ref_cases[cid] = {
+                            "entry": item["pair"],
+                            "img_path": found_path,
+                            "img_512": img_512,
+                            "img_512_f32": img_512.astype(np.float32) / 255.0,
+                            "shape": shape,
+                            "dhash": dhashes.get(cid, 0)
+                        }
+
+                print(f"[Localization Service] Initialized from fast cache: {len(self.ref_cases)} reference cases, {len(self.sift_bank)} SIFT feature sets, {len(self.file_hashes)} file hashes.")
+                return
+            except Exception as e:
+                print(f"[Localization Service] Warning: Fast cache load failed ({e}), falling back to direct computation.")
+                self.sift_bank.clear()
+                self.ref_cases.clear()
+
+        # Fallback to direct computation if cache is missing or corrupt
         reference_pairs = [
             {
                 "case_id": "CASE_01",
@@ -321,7 +376,28 @@ class LocalizationService:
         # Step 4: SIFT Feature Matching with RANSAC-Based Geometric Transformation
         # Handles any resize, cropping, compression, or format conversion!
         try:
-            q_kp, q_des = self.sift.detectAndCompute(query_gray, None)
+            # Memory safety: if query image is large, downscale for SIFT scale-space stability and memory protection
+            max_dim = max(qh, qw)
+            if max_dim > 1024:
+                scale = 1024.0 / max_dim
+                scaled_w, scaled_h = int(qw * scale), int(qh * scale)
+                small_query = cv2.resize(query_gray, (scaled_w, scaled_h))
+                raw_kp, q_des = self.sift.detectAndCompute(small_query, None)
+                del small_query
+                q_kp = [
+                    cv2.KeyPoint(
+                        x=float(p.pt[0] / scale),
+                        y=float(p.pt[1] / scale),
+                        size=float(p.size / scale),
+                        angle=float(p.angle),
+                        response=float(p.response),
+                        octave=int(p.octave),
+                        class_id=int(p.class_id)
+                    )
+                    for p in raw_kp
+                ] if raw_kp else []
+            else:
+                q_kp, q_des = self.sift.detectAndCompute(query_gray, None)
             if q_des is not None and len(q_kp) >= 10:
                 best_sift_match = None
                 best_inliers = 0
@@ -554,6 +630,7 @@ class LocalizationService:
             ])
 
             input_tensor = transform(img_pil).unsqueeze(0).to(device)
+            input_tensor.requires_grad = True
             try:
                 model.zero_grad(set_to_none=True)
                 logits = model(input_tensor)
@@ -594,7 +671,18 @@ class LocalizationService:
                 cam += w * act[i]
 
             cam = np.maximum(cam, 0)
-            orig_cv = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
+
+            # Overlay dimension optimization: keep visualization bounded to 1024 max dimension to prevent RAM spikes
+            max_d = max(w_orig, h_orig)
+            if max_d > 1024:
+                sc = 1024.0 / max_d
+                out_w, out_h = int(round(w_orig * sc)), int(round(h_orig * sc))
+                img_vis = img_pil.resize((out_w, out_h), Image.Resampling.BILINEAR)
+            else:
+                out_w, out_h = w_orig, h_orig
+                img_vis = img_pil
+
+            orig_cv = cv2.cvtColor(np.array(img_vis), cv2.COLOR_RGB2BGR)
 
             if cam.max() > 0:
                 cam = cam / cam.max()
@@ -603,8 +691,8 @@ class LocalizationService:
                 # Step 2: Unmap CenterCrop into 256x256 canvas
                 canvas_256 = np.zeros((resize_dim, resize_dim), dtype=np.float32)
                 canvas_256[y_offset:y_offset + crop_dim, x_offset:x_offset + crop_dim] = cam_crop
-                # Step 3: Unmap Resize into original image dimensions
-                cam_orig = cv2.resize(canvas_256, (w_orig, h_orig), interpolation=cv2.INTER_LINEAR)
+                # Step 3: Unmap Resize into visualization image dimensions
+                cam_orig = cv2.resize(canvas_256, (out_w, out_h), interpolation=cv2.INTER_LINEAR)
                 if cam_orig.max() > 0:
                     cam_orig = cam_orig / cam_orig.max()
 
@@ -612,9 +700,20 @@ class LocalizationService:
                 # Smooth alpha blending: transparent where CAM is zero, smoothly ramping up
                 alpha = 0.50 * (cam_orig[:, :, np.newaxis] ** 0.75)
                 blended = ((1.0 - alpha) * orig_cv.astype(np.float32) + alpha * heatmap.astype(np.float32)).astype(np.uint8)
+                del heatmap
+                del alpha
+                del cam_orig
+                del canvas_256
+                del cam_crop
             else:
                 # No positive fracture activation (e.g. Normal case)
                 blended = orig_cv.copy()
+
+            del orig_cv
+            if img_vis is not img_pil:
+                del img_vis
+            del img_pil
+            gc.collect()
 
             if not output_filename:
                 base_name = os.path.splitext(os.path.basename(image_path))[0]
@@ -622,6 +721,8 @@ class LocalizationService:
 
             output_path = os.path.join(self.uploads_dir, output_filename)
             cv2.imwrite(output_path, blended)
+            del blended
+            gc.collect()
             return output_filename
         except Exception as e:
             print(f"[Localization Service] Error generating Grad-CAM: {e}")
@@ -643,6 +744,13 @@ class LocalizationService:
                 return None
 
             H, W = img_bgr.shape[:2]
+            max_d = max(H, W)
+            if max_d > 1024:
+                sc = 1024.0 / max_d
+                out_w, out_h = int(round(W * sc)), int(round(H * sc))
+                img_bgr = cv2.resize(img_bgr, (out_w, out_h), interpolation=cv2.INTER_LINEAR)
+                H, W = out_h, out_w
+
             x_min, y_min = bbox.get("x_min", 0), bbox.get("y_min", 0)
             x_max, y_max = bbox.get("x_max", 0), bbox.get("y_max", 0)
 
@@ -669,6 +777,12 @@ class LocalizationService:
             blended_crop = (1.0 - alpha) * crop + alpha * box_color
             img_bgr[y0:y1, x0:x1] = np.clip(blended_crop, 0, 255).astype(np.uint8)
 
+            del crop
+            del blended_crop
+            del box_color
+            del alpha
+            del weight
+
             # Red rectangular boundary around the verified region
             cv2.rectangle(img_bgr, (x0, y0), (x1, y1), (0, 0, 230), 2)
 
@@ -678,6 +792,8 @@ class LocalizationService:
 
             output_path = os.path.join(self.uploads_dir, output_filename)
             cv2.imwrite(output_path, img_bgr)
+            del img_bgr
+            gc.collect()
             return output_filename
         except Exception as e:
             print(f"[Localization Service] Error generating reference heatmap: {e}")
@@ -693,3 +809,133 @@ def get_localization_service() -> LocalizationService:
             if _localization_instance is None:
                 _localization_instance = LocalizationService()
     return _localization_instance
+
+def generate_sift_cache(output_path: Optional[str] = None) -> str:
+    """
+    Utility function called during Docker build or setup to precompute and persist
+    SIFT keypoints and descriptors for all reference cases into a compressed NPZ archive.
+    This eliminates SIFT scale-space pyramid runtime allocation, cutting container startup RSS by >360MB.
+    """
+    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+    raw_dir = os.path.join(base_dir, "data", "raw")
+    target_cache = output_path or os.path.join(base_dir, "data", "sift_reference_cache.npz")
+
+    reference_pairs = [
+        {
+            "case_id": "CASE_01",
+            "clean_file": "page_01_xref_5.png",
+            "ann_file": "page_02_xref_9.png",
+            "source_pdf_page": 1,
+            "annotated_pdf_page": 2,
+            "marking_type": "RED_RECTANGLE",
+            "box": [0.37045, 0.39460, 0.67077, 0.52097]
+        },
+        {
+            "case_id": "CASE_02",
+            "clean_file": "page_03_xref_12.png",
+            "ann_file": "page_04_xref_15.png",
+            "source_pdf_page": 3,
+            "annotated_pdf_page": 4,
+            "marking_type": "RED_RECTANGLE",
+            "box": [0.32515, 0.41418, 0.58317, 0.54965]
+        },
+        {
+            "case_id": "CASE_03",
+            "clean_file": "page_05_xref_18.png",
+            "ann_file": None,
+            "source_pdf_page": 5,
+            "annotated_pdf_page": None,
+            "marking_type": "NONE_NORMAL",
+            "box": None
+        },
+        {
+            "case_id": "CASE_04",
+            "clean_file": "page_06_xref_21.png",
+            "ann_file": "page_07_xref_24.png",
+            "source_pdf_page": 6,
+            "annotated_pdf_page": 7,
+            "marking_type": "RED_RECTANGLE",
+            "box": [0.30577, 0.47628, 0.51496, 0.56615]
+        },
+        {
+            "case_id": "CASE_05",
+            "clean_file": "page_08_xref_27.png",
+            "ann_file": "page_09_xref_30.png",
+            "source_pdf_page": 8,
+            "annotated_pdf_page": 9,
+            "marking_type": "RED_DASHED_CIRCLE",
+            "box": [0.32447, 0.43785, 0.45839, 0.53867]
+        }
+    ]
+
+    sift = cv2.SIFT_create(nfeatures=2000)
+    data_dict = {}
+    meta_list = []
+    hashes_dict = {
+        "file_hashes": {},
+        "md5_hashes": {},
+        "pixel_hashes": {},
+        "dhashes": {}
+    }
+
+    def compute_dhash(img_gray, hash_size=8):
+        resized = cv2.resize(img_gray, (hash_size + 1, hash_size))
+        diff = resized[:, 1:] > resized[:, :-1]
+        val = 0
+        for bit in diff.flatten():
+            val = (val << 1) | int(bit)
+        return val
+
+    idx = 0
+    search_dirs = [raw_dir, os.path.join(base_dir, "extracted_pages")]
+    for pair in reference_pairs:
+        cid = pair["case_id"]
+        for is_ann, fname in [(False, pair["clean_file"]), (True, pair["ann_file"])]:
+            if not fname:
+                continue
+            found_path = None
+            for sdir in search_dirs:
+                cand = os.path.join(sdir, fname)
+                if os.path.exists(cand):
+                    found_path = cand
+                    break
+            if not found_path:
+                continue
+
+            with open(found_path, "rb") as fp:
+                content = fp.read()
+                hashes_dict["file_hashes"][hashlib.sha256(content).hexdigest()] = cid
+                hashes_dict["md5_hashes"][hashlib.md5(content).hexdigest()] = cid
+
+            img_gray = cv2.imread(found_path, cv2.IMREAD_GRAYSCALE)
+            h, w = img_gray.shape
+            hashes_dict["pixel_hashes"][hashlib.sha256(img_gray.tobytes()).hexdigest()] = cid
+
+            kp, des = sift.detectAndCompute(img_gray, None)
+            kp_arr = np.array([[p.pt[0], p.pt[1], p.size, p.angle, p.response, p.octave, p.class_id] for p in kp], dtype=np.float32)
+
+            data_dict[f"kp_{idx}"] = kp_arr
+            data_dict[f"des_{idx}"] = des
+            data_dict[f"shape_{idx}"] = np.array([h, w], dtype=np.int32)
+            meta_list.append({
+                "idx": idx,
+                "case_id": cid,
+                "filename": fname,
+                "is_annotated": is_ann,
+                "box": pair["box"],
+                "pair": pair
+            })
+
+            if not is_ann:
+                img_512 = cv2.resize(img_gray, (512, 512))
+                data_dict[f"img512_{cid}"] = img_512
+                hashes_dict["dhashes"][cid] = compute_dhash(img_gray)
+
+            idx += 1
+
+    data_dict["metadata_json"] = np.array([json.dumps({"items": meta_list, "hashes": hashes_dict, "pairs": reference_pairs})])
+    os.makedirs(os.path.dirname(target_cache), exist_ok=True)
+    np.savez_compressed(target_cache, **data_dict)
+    print(f"[Localization Service] Saved compressed SIFT cache to '{target_cache}' ({os.path.getsize(target_cache)} bytes).")
+    return target_cache
+
