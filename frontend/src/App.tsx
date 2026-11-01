@@ -16,7 +16,7 @@ import { ManagePatientsPage } from './pages/admin/ManagePatientsPage';
 import { AllCasesPage } from './pages/admin/AllCasesPage';
 import { ReportsAnalysisPage } from './pages/admin/ReportsAnalysisPage';
 
-import { getStoredUser, clearAuthSession, getCaseDetailApi, reviewCaseApi } from './services/api';
+import { getStoredUser, getAuthToken, getMeApi, clearAuthSession, getCaseDetailApi, reviewCaseApi } from './services/api';
 import { User, AnalysisResultPayload, CaseRecord } from './types';
 import { X, CheckCircle2, AlertTriangle, FileText, Calendar, Clock, Stethoscope, Save } from 'lucide-react';
 import { RadiographLocalizationViewer } from './components/RadiographLocalizationViewer';
@@ -29,6 +29,37 @@ export const App: React.FC = () => {
   });
 
   const [currentAnalysis, setCurrentAnalysis] = useState<AnalysisResultPayload | null>(null);
+
+  // Proactive session validation and global expiration listener
+  useEffect(() => {
+    const handleAuthExpired = () => {
+      clearAuthSession();
+      setUser(null);
+      setCurrentAnalysis(null);
+    };
+
+    window.addEventListener('wristai:auth-expired', handleAuthExpired);
+
+    const token = getAuthToken();
+    if (token) {
+      getMeApi()
+        .then((verifiedUser) => {
+          setUser(verifiedUser);
+        })
+        .catch(() => {
+          clearAuthSession();
+          setUser(null);
+          setCurrentAnalysis(null);
+        });
+    } else {
+      clearAuthSession();
+      setUser(null);
+    }
+
+    return () => {
+      window.removeEventListener('wristai:auth-expired', handleAuthExpired);
+    };
+  }, []);
 
   // Modal for viewing case detail
   const [caseModalOpen, setCaseModalOpen] = useState(false);

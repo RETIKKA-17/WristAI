@@ -76,6 +76,9 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   if (!response.ok) {
     if (response.status === 401) {
       clearAuthSession();
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('wristai:auth-expired'));
+      }
     }
     let errorDetail = 'An unexpected error occurred';
     try {
